@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>即時口譯機 Demo</title>
+<style>
+body {
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+background-color: #1a1a1a;
+color: #ffffff;
+display: flex;
+flex-direction: column;
+align-items: center;
+height: 100vh;
+margin: 0;
+overflow: hidden;
+}
+
+header {
+width: 100%;
+padding: 20px;
+text-align: center;
+background-color: #2d2d2d;
+font-size: 1.2rem;
+font-weight: bold;
+box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+
+.container {
+flex: 1;
+width: 90%;
+max-width: 600px;
+display: flex;
+flex-direction: column;
+justify-content: center;
+gap: 20px;
+padding: 20px 0;
+}
+
+.box {
+background-color: #333;
+border-radius: 15px;
+padding: 20px;
+min-height: 120px;
+display: flex;
+flex-direction: column;
+justify-content: center;
+box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+
+.label {
+font-size: 0.8rem;
+color: #aaa;
+margin-bottom: 5px;
+}
+
+.text-content {
+font-size: 1.2rem;
+line-height: 1.5;
+}
+
+.controls {
+display: flex;
+justify-content: space-between;
+align-items: center;
+width: 90%;
+max-width: 600px;
+padding-bottom: 40px;
+}
+
+.mode-switch {
+background: #444;
+color: white;
+border: none;
+padding: 10px 20px;
+border-radius: 20px;
+font-size: 0.9rem;
+}
+
+#mic-btn {
+width: 80px;
+height: 80px;
+border-radius: 50%;
+border: none;
+background-color: #007AFF;
+color: white;
+font-size: 30px;
+box-shadow: 0 4px 15px rgba(0,122,255,0.4);
+transition: all 0.2s;
+display: flex;
+align-items: center;
+justify-content: center;
+cursor: pointer;
+}
+
+#mic-btn.listening {
+background-color: #ff3b30;
+animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
+70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
+100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+}
+
+.status {
+text-align: center;
+height: 20px;
+color: #888;
+font-size: 0.9rem;
+margin-bottom: 10px;
+}
+</style>
+</head>
+<body>
+
+<header>口袋翻譯機 (Web API)</header>
+
+<div class="container">
+<div class="box">
+<div class="label">我說 (<span id="source-lang-label">中文</span>)</div>
+<div class="text-content" id="original-text">請點擊麥克風開始說話...</div>
+</div>
+
+<div class="box" style="background-color: #3d3d3d;">
+<div class="label">翻譯 (<span id="target-lang-label">英文</span>)</div>
+<div class="text-content" id="translated-text">...</div>
+</div>
+</div>
+
+<div class="status" id="status-text">準備就緒</div>
+
+<div class="controls">
+<button class="mode-switch" onclick="switchLanguage()">⇄ 切換語言</button>
+<button id="mic-btn" onclick="toggleRecording()">🎤</button>
+<button class="mode-switch" onclick="replayAudio()">🔊 重播</button>
+</div>
+
+<script>
+// 設定變數
+let isListening = false;
+let currentLang = 'zh-TW'; // 預設來源語言：中文
+let targetLang = 'en-US'; // 預設目標語言：英文
+
+// 檢查瀏覽器支援度
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SpeechRecognition) {
+alert("您的瀏覽器不支援語音辨識，請使用 Chrome 或 Safari。");
+}
+
+const recognition = new SpeechRecognition();
+recognition.continuous = false; // 講完一句就停
+recognition.interimResults = false; // 不顯示中間結果，確認後再顯示
+
+// UI 元素
+const micBtn = document.getElementById('mic-btn');
+const statusText = document.getElementById('status-text');
+const originalTextDiv = document.getElementById('original-text');
+const translatedTextDiv = document.getElementById('translated-text');
+const sourceLabel = document.getElementById('source-lang-label');
+const targetLabel = document.getElementById('target-lang-label');
+
+// 切換中英模式
+function switchLanguage() {
+if (currentLang === 'zh-TW') {
+currentLang = 'en-US';
+targetLang = 'zh-TW';
+sourceLabel.innerText = '英文';
+targetLabel.innerText = '中文';
+} else {
+currentLang = 'zh-TW';
+targetLang = 'en-US';
+sourceLabel.innerText = '中文';
+targetLabel.innerText = '英文';
+}
+statusText.innerText = `模式切換：${sourceLabel.innerText} -> ${targetLabel.innerText}`;
+}
+
+// 麥克風開關
+function toggleRecording() {
+if (isListening) {
+recognition.stop();
+} else {
+recognition.lang = currentLang;
+recognition.start();
+}
+}
+
+// 辨識開始
+recognition.onstart = () => {
+isListening = true;
+micBtn.classList.add('listening');
+statusText.innerText = "正在聆聽...";
+originalTextDiv.innerText = "...";
+translatedTextDiv.innerText = "...";
+};
+
+// 辨識結束
+recognition.onend = () => {
+isListening = false;
+micBtn.classList.remove('listening');
+statusText.innerText = "處理中...";
+};
+
+// 收到結果
+recognition.onresult = async (event) => {
+const transcript = event.results[0][0].transcript;
+originalTextDiv.innerText = transcript;
+
+// 呼叫翻譯 API
+await translateAndSpeak(transcript);
+};
+
+recognition.onerror = (event) => {
+statusText.innerText = "錯誤: " + event.error;
+isListening = false;
+micBtn.classList.remove('listening');
+};
+
+// 翻譯並朗讀核心函式
+async function translateAndSpeak(text) {
+try {
+statusText.innerText = "翻譯中...";
+
+// 使用 MyMemory 免費翻譯 API
+// 注意：這是公開 API，有字數限制與隱私風險，僅供 Demo 使用
+const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${currentLang}|${targetLang}`;
+
+const response = await fetch(url);
+const data = await response.json();
+
+if (data.responseData) {
+const translatedText = data.responseData.translatedText;
+translatedTextDiv.innerText = translatedText;
+statusText.innerText = "完成";
+
+// 朗讀翻譯結果
+speak(translatedText, targetLang);
+} else {
+throw new Error("API 回傳錯誤");
+}
+} catch (error) {
+console.error(error);
+statusText.innerText = "翻譯失敗，請重試";
+translatedTextDiv.innerText = "翻譯服務暫時無法使用";
+}
+}
+
+// 文字轉語音 (TTS)
+function speak(text, lang) {
+// 停止目前的發音（若有的話）
+window.speechSynthesis.cancel();
+
+const utterance = new SpeechSynthesisUtterance(text);
+utterance.lang = lang;
+utterance.rate = 1; // 語速
+
+// 解決 iOS 語音問題 (有時候需要選特定 voice)
+const voices = window.speechSynthesis.getVoices();
+// 這裡可以加入更複雜的語音選擇邏輯，目前先用預設
+
+window.speechSynthesis.speak(utterance);
+}
+
+function replayAudio() {
+const text = translatedTextDiv.innerText;
+if (text && text !== "...") {
+speak(text, targetLang);
+}
+}
+</script>
+
+</body>
+</html>
