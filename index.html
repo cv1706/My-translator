@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>即時雙向口譯 (V2)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 上半部：顯示區 */
+        .display-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            scroll-behavior: smooth;
+        }
+
+        /* 對話氣泡樣式 */
+        .message {
+            max-width: 85%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 1.1rem;
+            line-height: 1.4;
+            animation: fadeIn 0.3s ease;
+        }
+
+        /* 用戶說的話 (原文) */
+        .msg-original {
+            align-self: flex-end;
+            background-color: #2c2c2c;
+            color: #ccc;
+            border-bottom-right-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        /* 翻譯結果 (譯文) */
+        .msg-translated {
+            align-self: flex-start;
+            background-color: #007AFF;
+            color: white;
+            border-bottom-left-radius: 4px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0,122,255,0.3);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 下半部：控制區 */
+        .controls-area {
+            background-color: #1e1e1e;
+            padding: 20px;
+            padding-bottom: 40px; /* 避開手機底部橫條 */
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+        }
+
+        /* 麥克風按鈕 */
+        .mic-btn {
+            width: 45%;
+            height: 70px;
+            border: none;
+            border-radius: 15px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mic-btn span {
+            font-size: 1.5rem;
+            margin-bottom: 4px;
+        }
+
+        .btn-zh {
+            background: linear-gradient(145deg, #ff9500, #ff5e00);
+            box-shadow: 0 4px 15px rgba(255, 94, 0, 0.3);
+        }
+
+        .btn-en {
+            background: linear-gradient(145deg, #00c6ff, #0072ff);
+            box-shadow: 0 4px 15px rgba(0, 114, 255, 0.3);
+        }
+
+        /* 錄音中的動畫狀態 */
+        .mic-btn.active {
+            transform: scale(0.95);
+            filter: brightness(1.2);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+        
+        .mic-btn.active::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border: 2px solid white;
+            border-radius: 15px;
+            animation: borderPulse 1s infinite;
+        }
+
+        @keyframes borderPulse {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.1); }
+        }
+
+        .status-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.8);
+            color: #aaa;
+            text-align: center;
+            padding: 5px;
+            font-size: 0.8rem;
+            z-index: 100;
+            display: none;
+        }
+
+        /* 清除按鈕 */
+        .clear-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: #aaa;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            z-index: 99;
+        }
+    </style>
+</head>
+<body>
+
+<div class="status-bar" id="status-text">就緒</div>
+<button class="clear-btn" onclick="clearChat()">清除紀錄</button>
+
+<div class="display-area" id="chat-container">
+    <div class="message msg-translated" style="background-color: #333;">
+        歡迎使用雙向口譯。請長按下方按鈕開始對話。
+    </div>
+</div>
+
+<div class="controls-area">
+    <button class="mic-btn btn-zh" id="btn-zh" onmousedown="startListening('zh-TW')" onmouseup="stopListening()" ontouchstart="startListening('zh-TW')" ontouchend="stopListening()">
+        <span>🇹🇼</span>
+        說中文
+    </button>
+
+    <button class="mic-btn btn-en" id="btn-en" onmousedown="startListening('en-US')" onmouseup="stopListening()" ontouchstart="startListening('en-US')" ontouchend="stopListening()">
+        <span>🇺🇸</span>
+        Speak EN
+    </button>
+</div>
+
+<script>
+    // --- 設定變數 ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
+    let isRecording = false;
+    let currentSourceLang = 'zh-TW';
+    let currentTargetLang = 'en-US';
+    let finalTranscript = ''; // 儲存最終結果
+    
+    // UI 元素
+    const chatContainer = document.getElementById('chat-container');
+    const statusText = document.getElementById('status-text');
+    const btnZh = document.getElementById('btn-zh');
+    const btnEn = document.getElementById('btn-en');
+
+    // 檢查瀏覽器支援
+    if (!SpeechRecognition) {
+        alert("您的瀏覽器不支援語音辨識，請使用 Chrome 或 Safari。");
+    } else {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true; // 設為 true 實現連續辨識
+        recognition.interimResults = false; // 簡化處理，只拿最終結果
+        
+        // 當收到辨識結果
+        recognition.onresult = async (event) => {
+            // 由於 continuous=true，results 會是一個陣列，我們只取最新的
+            const lastResultIndex = event.results.length - 1;
+            const transcript = event.results[lastResultIndex][0].transcript.trim();
+            const isFinal = event.results[lastResultIndex].isFinal;
+
+            if (isFinal && transcript.length > 0) {
+                console.log("收到語音:", transcript);
+                
+                // 1. 顯示原文
+                addMessage(transcript, 'original');
+                
+                // 2. 暫停辨識 (避免聽到 TTS 的聲音)
+                recognition.stop(); 
+                
+                // 3. 翻譯並朗讀
+                await translateAndSpeak(transcript);
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error("辨識錯誤", event.error);
+            if (event.error !== 'no-speech') {
+                statusText.style.display = 'block';
+                statusText.innerText = "錯誤: " + event.error;
+            }
+        };
+        
+        recognition.onend = () => {
+            // 如果用戶還按著按鈕，或是處於「自動重啟」狀態，這裡可以做邏輯
+            // 但為了體驗最好，我們採用「按住說話」或「點擊切換」的混合邏輯
+            // 目前採用：按住期間一直聽，斷句後暫停去翻譯，翻譯完要手動再按（防止無限迴圈）
+            // 修正：用戶希望「長時間翻譯」，所以翻譯完應該要自動重啟嗎？
+            // 在手機網頁上，自動重啟麥克風常常會被擋，所以「按住說話 (Push to Talk)」是最穩的。
+            
+            isRecording = false;
+            updateBtnStyle(false);
+        };
+    }
+
+    // --- 核心功能 ---
+
+    // 開始聆聽 (按下按鈕)
+    function startListening(lang) {
+        if (isRecording) return;
+        
+        // 設定語言方向
+        if (lang === 'zh-TW') {
+            currentSourceLang = 'zh-TW';
+            currentTargetLang = 'en-US';
+            updateBtnStyle(true, 'zh');
+        } else {
+            currentSourceLang = 'en-US';
+            currentTargetLang = 'zh-TW';
+            updateBtnStyle(true, 'en');
+        }
+
+        try {
+            recognition.lang = currentSourceLang;
+            recognition.start();
+            isRecording = true;
+            statusText.innerText = "聆聽中...";
+            statusText.style.display = 'block';
+        } catch (e) {
+            console.error("無法啟動:", e);
+        }
+    }
+
+    // 停止聆聽 (放開按鈕)
+    function stopListening() {
+        if (isRecording) {
+            recognition.stop();
+            // 注意：stop 後不會馬上 onend，要等處理完
+        }
+    }
+
+    // 更新按鈕樣式
+    function updateBtnStyle(isActive, type) {
+        btnZh.classList.remove('active');
+        btnEn.classList.remove('active');
+        
+        if (isActive) {
+            if (type === 'zh') btnZh.classList.add('active');
+            if (type === 'en') btnEn.classList.add('active');
+        } else {
+            statusText.style.display = 'none';
+        }
+    }
+
+    // 翻譯與朗讀
+    async function translateAndSpeak(text) {
+        // 顯示「翻譯中...」的佔位符
+        const loadingId = addMessage("...", 'translated');
+        
+        try {
+            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${currentSourceLang}|${currentTargetLang}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.responseData) {
+                const translatedText = data.responseData.translatedText;
+                
+                // 更新 UI
+                document.getElementById(loadingId).innerText = translatedText;
+                
+                // 朗讀
+                await speak(translatedText, currentTargetLang);
+                
+            } else {
+                document.getElementById(loadingId).innerText = "翻譯錯誤";
+            }
+        } catch (e) {
+            document.getElementById(loadingId).innerText = "連線失敗";
+        }
+    }
+
+    // 朗讀功能 (Promise 封裝，確保唸完才做下一步)
+    function speak(text, lang) {
+        return new Promise((resolve) => {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = lang;
+            
+            utterance.onend = () => {
+                resolve();
+            };
+            
+            // 錯誤處理 (例如 iOS 有時不觸發 onend)
+            utterance.onerror = () => {
+                resolve();
+            };
+
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utterance);
+        });
+    }
+
+    // 輔助：新增訊息到畫面
+    function addMessage(text, type) {
+        const div = document.createElement('div');
+        const id = 'msg-' + Date.now();
+        div.id = id;
+        div.className = `message msg-${type}`;
+        div.innerText = text;
+        chatContainer.appendChild(div);
+        
+        // 自動捲動到底部
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return id;
+    }
+    
+    function clearChat() {
+        chatContainer.innerHTML = '';
+    }
+</script>
+
+</body>
+</html>
