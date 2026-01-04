@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 同步口譯 (V8-介面修正版)</title>
+    <title>AI 智慧口譯 (V9-輪流模式)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -13,7 +13,7 @@
             flex-direction: column;
             height: 100vh;
             margin: 0;
-            overflow: hidden; /* 防止整個頁面捲動 */
+            overflow: hidden;
         }
 
         /* 頂部功能列 */
@@ -25,18 +25,19 @@
             align-items: center;
             border-bottom: 1px solid #333;
             height: 50px;
-            flex-shrink: 0; /* 防止被擠壓 */
+            flex-shrink: 0;
             z-index: 20;
         }
 
         .status-badge {
             font-size: 0.8rem;
-            padding: 4px 8px;
+            padding: 4px 10px;
             border-radius: 12px;
             background: #333;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
+            transition: all 0.3s;
         }
         
         .status-dot {
@@ -47,28 +48,35 @@
         }
         .status-dot.active { background-color: #30d158; box-shadow: 0 0 8px #30d158; }
         
-        .tts-btn {
+        /* 開關按鈕群組 */
+        .toggles { display: flex; gap: 10px; }
+
+        .icon-btn {
             background: none;
             border: 1px solid #555;
             color: #ccc;
             padding: 4px 10px;
             border-radius: 15px;
             font-size: 0.8rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
-        .tts-btn.active { background: #fff; color: #000; border-color: #fff; }
+        .icon-btn.active { background: #fff; color: #000; border-color: #fff; }
+        .icon-btn.mode-pingpong { border-color: #0a84ff; color: #0a84ff; }
+        .icon-btn.mode-pingpong.active { background: #0a84ff; color: #fff; }
 
-        /* --- V8 修正重點：對話顯示區 --- */
+        /* 對話顯示區 */
         .display-area {
             flex: 1;
             padding: 15px;
-            /* 關鍵修正：底部留白增加到 250px，確保文字被推到按鈕上方 */
-            padding-bottom: 250px; 
+            padding-bottom: 260px; /* 預留底部空間 */
             overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 15px;
             scroll-behavior: smooth;
-            -webkit-overflow-scrolling: touch; /* 讓 iOS 捲動更順 */
         }
 
         .interim-text {
@@ -87,6 +95,8 @@
             font-size: 0.85rem; 
             margin-bottom: 4px; 
             margin-left: 4px; 
+            display: flex;
+            justify-content: space-between;
         }
         
         .translated-card {
@@ -101,7 +111,6 @@
         }
 
         .card-loading { color: #888; font-size: 0.9rem; }
-
         .border-A { border-left-color: #ff9f0a; } 
         .border-B { border-left-color: #0a84ff; } 
 
@@ -110,22 +119,21 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* 底部控制區 (固定) */
+        /* 底部控制區 */
         .controls-area {
             position: fixed;
             bottom: 0;
             left: 0;
             width: 100%;
-            background-color: rgba(28, 28, 30, 0.95); /* 輕微透明 */
-            backdrop-filter: blur(10px); /* 模糊背景效果 */
+            background-color: rgba(28, 28, 30, 0.95);
+            backdrop-filter: blur(10px);
             padding: 15px;
-            padding-bottom: 30px; /* 避開手機底部橫條 */
+            padding-bottom: 30px;
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
             border-top: 1px solid #333;
-            z-index: 100; /* 確保在最上層 */
-            box-sizing: border-box; /* 包含 padding 在寬度內 */
+            z-index: 100;
         }
 
         .lang-select {
@@ -155,15 +163,29 @@
             align-items: center;
             justify-content: center;
             transition: all 0.2s;
+            position: relative;
         }
 
-        .btn-active-A { background-color: #ff9f0a; color: #000; transform: scale(0.98); }
-        .btn-active-B { background-color: #0a84ff; color: #fff; transform: scale(0.98); }
+        /* 當前正在聽的那一邊 */
+        .btn-active-A { background-color: #ff9f0a; color: #000; transform: scale(0.98); box-shadow: 0 0 15px rgba(255, 159, 10, 0.4); }
+        .btn-active-B { background-color: #0a84ff; color: #fff; transform: scale(0.98); box-shadow: 0 0 15px rgba(10, 132, 255, 0.4); }
+        
+        /* 輪替模式下，下一位講者的提示 */
+        .next-indicator {
+            position: absolute;
+            top: -10px;
+            background: #fff;
+            color: #000;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            display: none;
+        }
         .dimmed { opacity: 0.3; pointer-events: none; }
 
         .stop-btn {
             position: absolute;
-            top: -60px; /* 往上浮一點 */
+            top: -60px;
             left: 50%;
             transform: translateX(-50%) scale(0);
             background: #ff453a;
@@ -183,25 +205,34 @@
 <body>
 
 <div class="top-bar">
-    <div class="status-badge">
+    <div class="status-badge" id="status-badge">
         <div class="status-dot" id="status-dot"></div>
         <span id="status-text">就緒</span>
     </div>
-    <button class="tts-btn active" id="tts-btn" onclick="toggleTts()">🔊 朗讀開</button>
+    
+    <div class="toggles">
+        <button class="icon-btn mode-pingpong" id="pingpong-btn" onclick="togglePingPong()">
+            🔄 輪替
+        </button>
+        <button class="icon-btn active" id="tts-btn" onclick="toggleTts()">
+            🔊
+        </button>
+    </div>
 </div>
 
 <div class="display-area" id="chat-container">
     <div class="message-group">
         <div class="translated-card">
-            🛠️ <b>V8 介面修正版</b><br>
-            已增加底部空間，翻譯結果不會再被按鈕擋住了。
+            💡 <b>V9 新功能：智慧輪替</b><br>
+            點擊右上角「🔄 輪替」開啟。<br>
+            您說完一句，系統會自動切換語言聽對方說，適合一來一往的對話。
         </div>
     </div>
     <div id="interim-result" class="interim-text" style="display:none;"></div>
 </div>
 
 <div class="controls-area">
-    <button class="stop-btn" id="stop-btn" onclick="stopEverything()">⬛ 停止翻譯</button>
+    <button class="stop-btn" id="stop-btn" onclick="stopEverything()">⬛ 停止</button>
     
     <div class="ctrl-group">
         <select class="lang-select" id="sel-A" onchange="updateUI()">
@@ -209,9 +240,9 @@
             <option value="en-US|🇺🇸">🇺🇸 英文</option>
             <option value="ja-JP|🇯🇵">🇯🇵 日文</option>
             <option value="ko-KR|🇰🇷">🇰🇷 韓文</option>
-            <option value="vi-VN|🇻🇳">🇻🇳 越南文</option>
         </select>
         <button class="big-btn" id="btn-A" onclick="startSession('A')">
+            <span class="next-indicator">Next</span>
             <span id="lbl-A">聽中文</span>
         </button>
     </div>
@@ -221,25 +252,28 @@
             <option value="en-US|🇺🇸" selected>🇺🇸 英文</option>
             <option value="zh-TW|🇹🇼">🇹🇼 中文</option>
             <option value="ja-JP|🇯🇵">🇯🇵 日文</option>
-            <option value="th-TH|🇹🇭">🇹🇭 泰文</option>
+            <option value="ko-KR|🇰🇷">🇰🇷 韓文</option>
         </select>
         <button class="big-btn" id="btn-B" onclick="startSession('B')">
+            <span class="next-indicator">Next</span>
             <span id="lbl-B">聽英文</span>
         </button>
     </div>
 </div>
 
 <script>
-    // --- 核心邏輯 (V7 + 捲動優化) ---
+    // --- 核心變數 ---
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
     let activeSide = null; 
     let isRunning = false;
     let isTtsEnabled = true;
+    let isPingPongMode = false; // 是否開啟輪流模式
     let ignoreEndEvent = false;
     let ttsQueue = [];
     let isSpeaking = false;
 
+    // UI 綁定
     const ui = {
         chat: document.getElementById('chat-container'),
         interim: document.getElementById('interim-result'),
@@ -250,7 +284,8 @@
         selB: document.getElementById('sel-B'),
         dot: document.getElementById('status-dot'),
         status: document.getElementById('status-text'),
-        ttsBtn: document.getElementById('tts-btn')
+        ttsBtn: document.getElementById('tts-btn'),
+        pingPongBtn: document.getElementById('pingpong-btn')
     };
 
     if (SpeechRecognition) {
@@ -260,8 +295,12 @@
 
         recognition.onstart = () => {
             ui.dot.classList.add('active');
-            ui.status.innerText = "收聽中...";
-            scrollToBottom(); // 確保開始時在最下方
+            
+            // 根據目前是誰在聽，更新狀態文字
+            const langName = activeSide === 'A' ? getLangName(ui.selA.value) : getLangName(ui.selB.value);
+            ui.status.innerText = `正在聽${langName}...`;
+            
+            scrollToBottom();
         };
 
         recognition.onresult = async (event) => {
@@ -279,22 +318,33 @@
             if (interimTranscript) {
                 ui.interim.style.display = 'block';
                 ui.interim.innerText = interimTranscript + "...";
-                scrollToBottom(); // 關鍵：即時字幕也要捲動
+                scrollToBottom();
             }
 
             if (finalTranscript) {
                 ui.interim.style.display = 'none';
                 ui.interim.innerText = '';
                 
+                // 1. 顯示
                 const msgId = addMessage(finalTranscript, activeSide);
-                translateAndQueue(finalTranscript, activeSide, msgId);
+                
+                // 2. 翻譯
+                await translateAndQueue(finalTranscript, activeSide, msgId);
+
+                // 3. 關鍵邏輯：如果是輪替模式，這句話結束後要切換「下一位」
+                if (isPingPongMode && isRunning) {
+                    toggleSide(); 
+                }
             }
         };
 
         recognition.onend = () => {
             ui.dot.classList.remove('active');
             ui.interim.style.display = 'none';
+            
             if (isRunning && !ignoreEndEvent) {
+                // 如果是普通模式，重啟當前語言
+                // 如果是輪替模式，剛剛在 onresult 已經切換了 activeSide，這裡直接重啟就會是新語言
                 try { recognition.start(); } catch(e) {
                     setTimeout(() => { if(isRunning) recognition.start(); }, 200);
                 }
@@ -308,7 +358,7 @@
             if (e.error !== 'no-speech') ui.status.innerText = "重連中...";
         };
     } else {
-        alert("不支援語音 API");
+        alert("瀏覽器不支援");
     }
 
     // --- 功能函式 ---
@@ -324,10 +374,27 @@
             isRunning = true;
             ignoreEndEvent = false;
             updateUIState(side);
-            const val = side === 'A' ? ui.selA.value : ui.selB.value;
-            recognition.lang = val.split('|')[0];
+            setRecognitionLang(side);
             try { recognition.start(); } catch(e) {}
         }, 100);
+    }
+
+    function toggleSide() {
+        // 切換 activeSide 變數，但「不」呼叫 stop，
+        // 而是讓 onend 事件自然發生，下次 start 就會讀到新的 activeSide
+        if (activeSide === 'A') {
+            activeSide = 'B';
+        } else {
+            activeSide = 'A';
+        }
+        // 更新 UI 讓用戶知道下一個換誰
+        updateUIState(activeSide);
+        setRecognitionLang(activeSide);
+    }
+
+    function setRecognitionLang(side) {
+        const val = side === 'A' ? ui.selA.value : ui.selB.value;
+        recognition.lang = val.split('|')[0];
     }
 
     function stopEverything() {
@@ -341,8 +408,17 @@
 
     function updateUIState(side) {
         ui.stopBtn.classList.add('show');
-        ui.btnA.className = side === 'A' ? 'big-btn btn-active-A' : 'big-btn dimmed';
-        ui.btnB.className = side === 'B' ? 'big-btn btn-active-B' : 'big-btn dimmed';
+        
+        // 重置所有樣式
+        ui.btnA.className = 'big-btn dimmed';
+        ui.btnB.className = 'big-btn dimmed';
+        
+        // 激活當前邊
+        if (side === 'A') {
+            ui.btnA.className = 'big-btn btn-active-A';
+        } else {
+            ui.btnB.className = 'big-btn btn-active-B';
+        }
     }
 
     function resetButtons() {
@@ -350,6 +426,8 @@
         ui.btnA.className = 'big-btn';
         ui.btnB.className = 'big-btn';
     }
+
+    // --- 翻譯與 TTS ---
 
     async function translateAndQueue(text, side, msgId) {
         const sVal = side === 'A' ? ui.selA.value : ui.selB.value;
@@ -379,14 +457,11 @@
                 transDiv.style.fontWeight = 'bold';
                 transDiv.innerText = transText;
                 card.appendChild(transDiv);
-                
-                scrollToBottom(); // 翻譯完後再次確認捲動
+                scrollToBottom();
 
                 if (isTtsEnabled) addToTTSQueue(transText, tLang);
             }
-        } catch (e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
     }
 
     function addToTTSQueue(text, lang) {
@@ -410,8 +485,14 @@
         div.className = 'message-group';
         const colorClass = side === 'A' ? 'border-A' : 'border-B';
         const cardId = 'msg-' + Date.now();
+        
+        // 顯示國旗
+        const flag = side === 'A' ? ui.selA.value.split('|')[1] : ui.selB.value.split('|')[1];
+        
         div.innerHTML = `
-            <div class="original-text">${activeSide === 'A' ? '🇹🇼 我' : '🇺🇸 對方'}</div>
+            <div class="original-text">
+                <span>${flag} 來源</span>
+            </div>
             <div class="translated-card ${colorClass}" id="${cardId}">${original}</div>
         `;
         ui.chat.insertBefore(div, ui.interim);
@@ -419,19 +500,26 @@
         return cardId;
     }
 
-    // 優化的捲動函式
     function scrollToBottom() {
-        // 使用 setTimeout 確保 DOM 渲染完畢後才捲動
-        setTimeout(() => {
-            ui.chat.scrollTop = ui.chat.scrollHeight;
-        }, 50);
+        setTimeout(() => { ui.chat.scrollTop = ui.chat.scrollHeight; }, 50);
+    }
+
+    // --- 開關控制 ---
+
+    function togglePingPong() {
+        isPingPongMode = !isPingPongMode;
+        ui.pingPongBtn.classList.toggle('active', isPingPongMode);
+        
+        if (isPingPongMode) {
+            ui.pingPongBtn.innerText = "🔄 輪替 ON";
+        } else {
+            ui.pingPongBtn.innerText = "🔄 輪替";
+        }
     }
 
     function toggleTts() {
         isTtsEnabled = !isTtsEnabled;
         ui.ttsBtn.classList.toggle('active', isTtsEnabled);
-        ui.ttsBtn.innerText = isTtsEnabled ? '🔊 朗讀開' : '🔇 朗讀關';
-        if (!isTtsEnabled) window.speechSynthesis.cancel();
     }
 
     function updateUI() {
@@ -447,8 +535,6 @@
         if (val.includes('en')) return '英文';
         if (val.includes('ja')) return '日文';
         if (val.includes('ko')) return '韓文';
-        if (val.includes('vi')) return '越文';
-        if (val.includes('th')) return '泰文';
         return '';
     }
     
