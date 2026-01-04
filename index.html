@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 同步口譯 (V10-暴力重連版)</title>
+    <title>AI 同步口譯 (V11-防漏字版)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -37,14 +37,13 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            transition: all 0.3s;
         }
         
         .status-dot { width: 8px; height: 8px; background-color: #666; border-radius: 50%; }
-        /* 讓綠燈閃爍更明顯，代表正在強行運作 */
-        .status-dot.active { background-color: #30d158; box-shadow: 0 0 10px #30d158; animation: pulse 1s infinite; }
-        
-        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+        .status-dot.active { background-color: #30d158; box-shadow: 0 0 10px #30d158; }
+        .status-dot.preparing { background-color: #ffd60a; animation: pulseFast 0.5s infinite; }
+
+        @keyframes pulseFast { 0% {opacity:0.4;} 50% {opacity:1;} 100% {opacity:0.4;} }
 
         .toggles { display: flex; gap: 10px; }
 
@@ -56,9 +55,6 @@
             border-radius: 15px;
             font-size: 0.8rem;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 4px;
         }
         .icon-btn.active { background: #fff; color: #000; border-color: #fff; }
         .icon-btn.mode-pingpong { border-color: #0a84ff; color: #0a84ff; }
@@ -77,13 +73,8 @@
         }
 
         .interim-text {
-            color: #888;
-            font-style: italic;
-            padding: 10px;
-            border-left: 2px solid #555;
-            animation: pulseText 1.5s infinite;
+            color: #888; font-style: italic; padding: 10px; border-left: 2px solid #555;
         }
-        @keyframes pulseText { 0% {opacity:0.6;} 50% {opacity:1;} 100% {opacity:0.6;} }
 
         .message-group { animation: slideIn 0.2s ease; }
         
@@ -111,51 +102,36 @@
 
         /* 底部控制區 */
         .controls-area {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
+            position: fixed; bottom: 0; left: 0; width: 100%;
             background-color: rgba(28, 28, 30, 0.95);
             backdrop-filter: blur(10px);
-            padding: 15px;
-            padding-bottom: 30px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            border-top: 1px solid #333;
-            z-index: 100;
+            padding: 15px; padding-bottom: 30px;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+            border-top: 1px solid #333; z-index: 100;
         }
 
         .lang-select {
-            width: 100%;
-            background: #2c2c2e;
-            color: white;
-            border: none;
-            padding: 8px;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            text-align: center;
-            font-size: 0.95rem;
+            width: 100%; background: #2c2c2e; color: white; border: none;
+            padding: 8px; border-radius: 8px; margin-bottom: 8px;
+            text-align: center; font-size: 0.95rem;
         }
 
         .ctrl-group { display: flex; flex-direction: column; }
 
         .big-btn {
-            height: 65px;
-            border: none;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-weight: bold;
-            color: white;
+            height: 65px; border: none; border-radius: 12px;
+            font-size: 1rem; font-weight: bold; color: white;
             background-color: #2c2c2e;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            position: relative;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: all 0.2s; position: relative;
         }
 
+        /* 準備中狀態 (黃色閃爍) */
+        .big-btn.preparing {
+            background-color: #444; color: #ffd60a; border: 2px solid #ffd60a;
+        }
+
+        /* 正式收音狀態 */
         .btn-active-A { background-color: #ff9f0a; color: #000; transform: scale(0.98); box-shadow: 0 0 15px rgba(255, 159, 10, 0.4); }
         .btn-active-B { background-color: #0a84ff; color: #fff; transform: scale(0.98); box-shadow: 0 0 15px rgba(10, 132, 255, 0.4); }
         
@@ -169,22 +145,19 @@
             position: absolute; top: -60px; left: 50%; transform: translateX(-50%) scale(0);
             background: #ff453a; color: white; border: none; padding: 10px 30px;
             border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 101;
+            transition: transform 0.3s; z-index: 101;
         }
         .stop-btn.show { transform: translateX(-50%) scale(1); }
 
-        /* 除錯訊息 */
-        .debug-msg { position: fixed; bottom: 120px; left:0; width:100%; text-align:center; font-size:0.7rem; color:#555; pointer-events:none; }
     </style>
 </head>
 <body>
 
 <div class="top-bar">
-    <div class="status-badge" id="status-badge">
+    <div class="status-badge">
         <div class="status-dot" id="status-dot"></div>
         <span id="status-text">就緒</span>
     </div>
-    
     <div class="toggles">
         <button class="icon-btn mode-pingpong" id="pingpong-btn" onclick="togglePingPong()">🔄 輪替</button>
         <button class="icon-btn active" id="tts-btn" onclick="toggleTts()">🔊</button>
@@ -194,21 +167,19 @@
 <div class="display-area" id="chat-container">
     <div class="message-group">
         <div class="translated-card">
-            🔥 <b>V10 暴力重連版</b><br>
-            已啟用「看門狗」機制。<br>
-            就算麥克風斷線，系統也會在 0.5 秒內強制重啟。
+            👂 <b>V11 防漏字機制</b><br>
+            按下按鈕後，請等待<b>「叮！」</b>一聲提示音，<br>
+            看到按鈕變色後再開始說話。
         </div>
     </div>
     <div id="interim-result" class="interim-text" style="display:none;"></div>
 </div>
 
-<div class="debug-msg" id="debug-text"></div>
-
 <div class="controls-area">
-    <button class="stop-btn" id="stop-btn" onclick="stopEverything()">⬛ 完全停止</button>
+    <button class="stop-btn" id="stop-btn" onclick="stopEverything()">⬛ 停止</button>
     
     <div class="ctrl-group">
-        <select class="lang-select" id="sel-A" onchange="updateUI()">
+        <select class="lang-select" id="sel-A">
             <option value="zh-TW|🇹🇼">🇹🇼 中文</option>
             <option value="en-US|🇺🇸">🇺🇸 英文</option>
             <option value="ja-JP|🇯🇵">🇯🇵 日文</option>
@@ -221,7 +192,7 @@
     </div>
 
     <div class="ctrl-group">
-        <select class="lang-select" id="sel-B" onchange="updateUI()">
+        <select class="lang-select" id="sel-B">
             <option value="en-US|🇺🇸" selected>🇺🇸 英文</option>
             <option value="zh-TW|🇹🇼">🇹🇼 中文</option>
             <option value="ja-JP|🇯🇵">🇯🇵 日文</option>
@@ -238,14 +209,14 @@
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
     let activeSide = null; 
-    let isRunning = false; // 用戶期望的狀態
-    let isActuallyListening = false; // 麥克風實際的狀態
+    let isRunning = false;
     let isTtsEnabled = true;
     let isPingPongMode = false;
     let ttsQueue = [];
     let isSpeaking = false;
-    let watchdogTimer = null; // 看門狗變數
-    let restartCount = 0;
+    
+    // 音效環境
+    let audioCtx = null;
 
     const ui = {
         chat: document.getElementById('chat-container'),
@@ -258,28 +229,46 @@
         dot: document.getElementById('status-dot'),
         status: document.getElementById('status-text'),
         ttsBtn: document.getElementById('tts-btn'),
-        pingPongBtn: document.getElementById('pingpong-btn'),
-        debug: document.getElementById('debug-text')
+        pingPongBtn: document.getElementById('pingpong-btn')
     };
 
     if (SpeechRecognition) {
         recognition = new SpeechRecognition();
-        recognition.continuous = false; // 手機必須設為 false 才能穩定
+        recognition.continuous = false;
         recognition.interimResults = true;
 
+        // 當麥克風「真的」打開了
         recognition.onstart = () => {
-            isActuallyListening = true;
-            ui.dot.classList.add('active');
+            // 1. 播放提示音
+            playCueSound();
+            
+            // 2. 更新 UI 為「活躍狀態」
+            ui.dot.className = 'status-dot active';
             const langName = activeSide === 'A' ? getLangName(ui.selA.value) : getLangName(ui.selB.value);
-            ui.status.innerText = `收聽${langName}中...`;
+            ui.status.innerText = `正在聽${langName}...`;
+            
+            updateBtnActive(activeSide); // 按鈕變色
             scrollToBottom();
         };
 
         recognition.onend = () => {
-            isActuallyListening = false;
-            ui.dot.classList.remove('active');
+            ui.dot.className = 'status-dot';
             ui.interim.style.display = 'none';
-            // 注意：這裡不主動 start，全權交給 Watchdog 處理，避免邏輯衝突
+            // 邏輯：如果還是 running 狀態，嘗試重連
+            if (isRunning) {
+                // 如果剛剛是 PingPong 模式且已經完成翻譯，這裡其實不需要立即重啟，
+                // 而是等待 translate 完成後的 toggle。
+                // 但為了保險起見（例如沒講話就斷了），使用 Watchdog 邏輯比較好
+                // 這裡簡化：只重置按鈕樣式，等待下一次觸發
+                ui.btnA.className = activeSide === 'A' ? 'big-btn dimmed' : 'big-btn dimmed'; 
+                ui.btnB.className = activeSide === 'B' ? 'big-btn dimmed' : 'big-btn dimmed';
+                
+                // 嘗試快速重啟 (Watchdog 輕量版)
+                setTimeout(() => { if(isRunning) try{recognition.start()}catch(e){} }, 200);
+            } else {
+                ui.status.innerText = "已停止";
+                resetButtons();
+            }
         };
 
         recognition.onresult = async (event) => {
@@ -287,11 +276,8 @@
             let interimTranscript = '';
 
             for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript;
-                } else {
-                    interimTranscript += event.results[i][0].transcript;
-                }
+                if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
+                else interimTranscript += event.results[i][0].transcript;
             }
 
             if (interimTranscript) {
@@ -304,206 +290,150 @@
                 ui.interim.style.display = 'none';
                 ui.interim.innerText = '';
                 
-                // 收到完整句子，先處理翻譯
                 const msgId = addMessage(finalTranscript, activeSide);
                 await translateAndQueue(finalTranscript, activeSide, msgId);
 
-                // 如果是輪替模式，切換到另一邊
-                if (isPingPongMode && isRunning) {
-                    toggleSide(); 
-                }
+                if (isPingPongMode && isRunning) toggleSide(); 
             }
         };
-
-        recognition.onerror = (e) => {
-            console.log("Mic Error:", e.error);
-            // 忽略 'no-speech' 錯誤，這在手機上很常見
-            if (e.error !== 'no-speech') {
-                ui.debug.innerText = "Error: " + e.error;
-            }
-            // 錯誤發生時，麥克風通常會關閉，交給 Watchdog 重啟
-        };
-    } else {
-        alert("瀏覽器不支援");
-    }
-
-    // --- 核心：看門狗機制 (Watchdog) ---
-    // 這是一個獨立的計時器，不管瀏覽器發生什麼事，它每 500ms 就像教官一樣來巡房
-    function startWatchdog() {
-        if (watchdogTimer) clearInterval(watchdogTimer);
         
-        watchdogTimer = setInterval(() => {
-            // 如果「應該要跑 (isRunning)」但是「實際沒在跑 (isActuallyListening is false)」
-            if (isRunning && !isActuallyListening && activeSide) {
-                restartCount++;
-                ui.debug.innerText = `強制重連次數: ${restartCount}`;
-                console.log("Watchdog: 重啟麥克風...");
-                
-                try {
-                    // 確保語言設定正確
-                    setRecognitionLang(activeSide);
-                    recognition.start();
-                } catch (e) {
-                    // 如果重啟太頻繁報錯，也忽略，下次迴圈再試
-                }
-            }
-        }, 500); // 0.5秒檢查一次
+        recognition.onerror = (e) => {
+            if (e.error !== 'no-speech') ui.status.innerText = "重連中...";
+        };
+
+    } else { alert("瀏覽器不支援"); }
+
+    // --- 提示音產生器 (無須外部檔案) ---
+    function initAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
-    function stopWatchdog() {
-        if (watchdogTimer) clearInterval(watchdogTimer);
-        watchdogTimer = null;
+    function playCueSound() {
+        if (!audioCtx) initAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        // 設定聲音頻率 (清脆的叮聲)
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.1);
+        
+        // 設定音量淡出
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.1);
     }
 
     // --- 控制邏輯 ---
 
     function startSession(side) {
-        // 請求螢幕常亮 (如果瀏覽器支援)
-        if ('wakeLock' in navigator) {
-            try { navigator.wakeLock.request('screen'); } catch(e){}
-        }
-
-        if (isRunning && activeSide === side) return;
+        initAudio(); // 初始化音效引擎
         
-        // 先停掉當前的
-        recognition.stop(); 
+        if (isRunning && activeSide === side) return;
+        recognition.stop();
         
         activeSide = side;
         isRunning = true;
         
-        updateUIState(side);
-        setRecognitionLang(side);
-        
-        // 啟動看門狗，讓看門狗去啟動麥克風
-        startWatchdog();
-    }
-
-    function toggleSide() {
-        // 只切換變數，實際的重啟交給 Watchdog 下一次巡房時執行
-        recognition.stop(); // 停止當前收音，這會觸發 isActuallyListening = false
-        activeSide = (activeSide === 'A') ? 'B' : 'A';
-        updateUIState(activeSide);
-        // Watchdog 會在 0.5 秒內發現麥克風停了，然後用新的 activeSide 重啟
-    }
-
-    function stopEverything() {
-        isRunning = false; // 告訴看門狗：休息了，別叫了
-        activeSide = null;
-        stopWatchdog();
-        recognition.stop();
-        window.speechSynthesis.cancel();
-        ttsQueue = [];
-        resetButtons();
-        ui.status.innerText = "已停止";
-        ui.debug.innerText = "";
-    }
-
-    // --- 輔助函式 ---
-
-    function setRecognitionLang(side) {
-        const val = side === 'A' ? ui.selA.value : ui.selB.value;
-        recognition.lang = val.split('|')[0];
-    }
-
-    function updateUIState(side) {
+        // 1. 先設為「準備中」狀態 (黃色)
         ui.stopBtn.classList.add('show');
         ui.btnA.className = 'big-btn dimmed';
         ui.btnB.className = 'big-btn dimmed';
+        
+        const targetBtn = side === 'A' ? ui.btnA : ui.btnB;
+        targetBtn.className = 'big-btn preparing'; // 黃色準備中
+        ui.status.innerText = "啟動麥克風...";
+        ui.dot.className = 'status-dot preparing';
+
+        // 2. 設定語言並啟動
+        const val = side === 'A' ? ui.selA.value : ui.selB.value;
+        recognition.lang = val.split('|')[0];
+        
+        // 3. 延遲啟動以確保狀態切換
+        setTimeout(() => { try { recognition.start(); } catch(e) {} }, 100);
+    }
+
+    function updateBtnActive(side) {
+        // 真正變成「錄音中」顏色
         if (side === 'A') ui.btnA.className = 'big-btn btn-active-A';
         else ui.btnB.className = 'big-btn btn-active-B';
     }
 
-    function resetButtons() {
-        ui.stopBtn.classList.remove('show');
-        ui.btnA.className = 'big-btn';
-        ui.btnB.className = 'big-btn';
+    function toggleSide() {
+        // 輪替模式：先停當前，稍微延遲再開對面，給使用者反應時間
+        recognition.stop();
+        activeSide = (activeSide === 'A') ? 'B' : 'A';
+        
+        // 自動啟動下一邊 (會自動觸發 startSession 的流程：變黃 -> 叮 -> 變色)
+        setTimeout(() => startSession(activeSide), 500);
     }
 
-    // --- 翻譯與 TTS (同前版) ---
+    function stopEverything() {
+        isRunning = false; activeSide = null;
+        recognition.stop(); window.speechSynthesis.cancel();
+        ttsQueue = []; resetButtons();
+        ui.status.innerText = "已停止"; ui.dot.className = 'status-dot';
+    }
+
+    function resetButtons() {
+        ui.stopBtn.classList.remove('show');
+        ui.btnA.className = 'big-btn'; ui.btnB.className = 'big-btn';
+    }
+
+    // --- 翻譯與TTS (保持不變) ---
     async function translateAndQueue(text, side, msgId) {
         const sVal = side === 'A' ? ui.selA.value : ui.selB.value;
         const tVal = side === 'A' ? ui.selB.value : ui.selA.value;
-        const sLang = sVal.split('|')[0];
-        const tLang = tVal.split('|')[0];
-
+        const sLang = sVal.split('|')[0]; const tLang = tVal.split('|')[0];
+        
         try {
             const card = document.getElementById(msgId);
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'card-loading';
-            loadingDiv.innerText = '翻譯中...';
-            card.appendChild(loadingDiv);
-            scrollToBottom();
+            const loading = document.createElement('div');
+            loading.className = 'card-loading'; loading.innerText = '翻譯中...';
+            card.appendChild(loading); scrollToBottom();
 
-            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${sLang}|${tLang}`;
-            const res = await fetch(url);
+            const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${sLang}|${tLang}`);
             const data = await res.json();
             
             if (data.responseData) {
-                const transText = data.responseData.translatedText;
-                card.removeChild(loadingDiv);
+                card.removeChild(loading);
                 const transDiv = document.createElement('div');
-                transDiv.style.color = '#fff';
-                transDiv.style.marginTop = '5px';
-                transDiv.style.fontWeight = 'bold';
-                transDiv.innerText = transText;
-                card.appendChild(transDiv);
-                scrollToBottom();
-
-                if (isTtsEnabled) addToTTSQueue(transText, tLang);
+                transDiv.style.color = '#fff'; transDiv.style.marginTop = '5px'; transDiv.style.fontWeight = 'bold';
+                transDiv.innerText = data.responseData.translatedText;
+                card.appendChild(transDiv); scrollToBottom();
+                if (isTtsEnabled) addToTTSQueue(data.responseData.translatedText, tLang);
             }
         } catch (e) { console.error(e); }
     }
 
-    function addToTTSQueue(text, lang) {
-        ttsQueue.push({ text, lang });
-        processQueue();
-    }
-
+    function addToTTSQueue(text, lang) { ttsQueue.push({ text, lang }); processQueue(); }
     function processQueue() {
         if (isSpeaking || ttsQueue.length === 0) return;
-        isSpeaking = true;
-        const item = ttsQueue.shift();
-        const u = new SpeechSynthesisUtterance(item.text);
-        u.lang = item.lang;
-        u.onend = () => { isSpeaking = false; processQueue(); };
-        u.onerror = () => { isSpeaking = false; processQueue(); };
+        isSpeaking = true; const item = ttsQueue.shift();
+        const u = new SpeechSynthesisUtterance(item.text); u.lang = item.lang;
+        u.onend = u.onerror = () => { isSpeaking = false; processQueue(); };
         window.speechSynthesis.speak(u);
     }
 
     function addMessage(original, side) {
-        const div = document.createElement('div');
-        div.className = 'message-group';
+        const div = document.createElement('div'); div.className = 'message-group';
         const colorClass = side === 'A' ? 'border-A' : 'border-B';
-        const cardId = 'msg-' + Date.now();
         const flag = side === 'A' ? ui.selA.value.split('|')[1] : ui.selB.value.split('|')[1];
-        div.innerHTML = `<div class="original-text"><span>${flag} 來源</span></div><div class="translated-card ${colorClass}" id="${cardId}">${original}</div>`;
-        ui.chat.insertBefore(div, ui.interim);
-        scrollToBottom();
-        return cardId;
+        div.innerHTML = `<div class="original-text"><span>${flag} 來源</span></div><div class="translated-card ${colorClass}" id="msg-${Date.now()}">${original}</div>`;
+        ui.chat.insertBefore(div, ui.interim); scrollToBottom();
+        return div.querySelector('.translated-card').id;
     }
 
     function scrollToBottom() { setTimeout(() => { ui.chat.scrollTop = ui.chat.scrollHeight; }, 50); }
-
-    function togglePingPong() {
-        isPingPongMode = !isPingPongMode;
-        ui.pingPongBtn.classList.toggle('active', isPingPongMode);
-    }
-    function toggleTts() {
-        isTtsEnabled = !isTtsEnabled;
-        ui.ttsBtn.classList.toggle('active', isTtsEnabled);
-    }
-    function updateUI() {
-        const textA = ui.selA.value.split('|')[1] + " 聽" + getLangName(ui.selA.value);
-        const textB = ui.selB.value.split('|')[1] + " 聽" + getLangName(ui.selB.value);
-        document.getElementById('lbl-A').innerText = textA;
-        document.getElementById('lbl-B').innerText = textB;
-        if (isRunning) stopEverything();
-    }
-    function getLangName(val) {
-        if (val.includes('zh')) return '中文'; if (val.includes('en')) return '英文';
-        if (val.includes('ja')) return '日文'; if (val.includes('ko')) return '韓文'; return '';
-    }
-    updateUI();
+    function togglePingPong() { isPingPongMode = !isPingPongMode; ui.pingPongBtn.classList.toggle('active', isPingPongMode); }
+    function toggleTts() { isTtsEnabled = !isTtsEnabled; ui.ttsBtn.classList.toggle('active', isTtsEnabled); }
+    function getLangName(val) { return val.split('|')[1]; }
 </script>
 </body>
 </html>
