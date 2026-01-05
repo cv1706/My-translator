@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 同步口譯 (V11-防漏字版)</title>
+    <title>AI 同步口譯 (V12-重置核心版)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -40,21 +40,15 @@
         }
         
         .status-dot { width: 8px; height: 8px; background-color: #666; border-radius: 50%; }
-        .status-dot.active { background-color: #30d158; box-shadow: 0 0 10px #30d158; }
-        .status-dot.preparing { background-color: #ffd60a; animation: pulseFast 0.5s infinite; }
-
-        @keyframes pulseFast { 0% {opacity:0.4;} 50% {opacity:1;} 100% {opacity:0.4;} }
+        .status-dot.active { background-color: #30d158; box-shadow: 0 0 10px #30d158; animation: blink 2s infinite; }
+        
+        @keyframes blink { 50% { opacity: 0.6; } }
 
         .toggles { display: flex; gap: 10px; }
 
         .icon-btn {
-            background: none;
-            border: 1px solid #555;
-            color: #ccc;
-            padding: 4px 10px;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            cursor: pointer;
+            background: none; border: 1px solid #555; color: #ccc;
+            padding: 4px 10px; border-radius: 15px; font-size: 0.8rem; cursor: pointer;
         }
         .icon-btn.active { background: #fff; color: #000; border-color: #fff; }
         .icon-btn.mode-pingpong { border-color: #0a84ff; color: #0a84ff; }
@@ -64,16 +58,18 @@
         .display-area {
             flex: 1;
             padding: 15px;
-            padding-bottom: 260px;
+            padding-bottom: 280px; /* 加大底部空間 */
             overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 15px;
             scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
         }
 
         .interim-text {
             color: #888; font-style: italic; padding: 10px; border-left: 2px solid #555;
+            min-height: 20px;
         }
 
         .message-group { animation: slideIn 0.2s ease; }
@@ -105,8 +101,8 @@
             position: fixed; bottom: 0; left: 0; width: 100%;
             background-color: rgba(28, 28, 30, 0.95);
             backdrop-filter: blur(10px);
-            padding: 15px; padding-bottom: 30px;
-            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+            padding: 15px; padding-bottom: 35px;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
             border-top: 1px solid #333; z-index: 100;
         }
 
@@ -119,30 +115,24 @@
         .ctrl-group { display: flex; flex-direction: column; }
 
         .big-btn {
-            height: 65px; border: none; border-radius: 12px;
+            height: 70px; border: none; border-radius: 14px;
             font-size: 1rem; font-weight: bold; color: white;
             background-color: #2c2c2e;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            transition: all 0.2s; position: relative;
+            transition: all 0.1s; position: relative;
         }
 
-        /* 準備中狀態 (黃色閃爍) */
-        .big-btn.preparing {
-            background-color: #444; color: #ffd60a; border: 2px solid #ffd60a;
-        }
-
-        /* 正式收音狀態 */
-        .btn-active-A { background-color: #ff9f0a; color: #000; transform: scale(0.98); box-shadow: 0 0 15px rgba(255, 159, 10, 0.4); }
-        .btn-active-B { background-color: #0a84ff; color: #fff; transform: scale(0.98); box-shadow: 0 0 15px rgba(10, 132, 255, 0.4); }
+        .btn-active-A { background-color: #ff9f0a; color: #000; transform: scale(0.98); box-shadow: 0 0 15px rgba(255, 159, 10, 0.3); }
+        .btn-active-B { background-color: #0a84ff; color: #fff; transform: scale(0.98); box-shadow: 0 0 15px rgba(10, 132, 255, 0.3); }
         
         .next-indicator {
             position: absolute; top: -10px; background: #fff; color: #000;
             font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; display: none;
         }
-        .dimmed { opacity: 0.3; pointer-events: none; }
+        .dimmed { opacity: 0.4; pointer-events: none; }
 
         .stop-btn {
-            position: absolute; top: -60px; left: 50%; transform: translateX(-50%) scale(0);
+            position: absolute; top: -65px; left: 50%; transform: translateX(-50%) scale(0);
             background: #ff453a; color: white; border: none; padding: 10px 30px;
             border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
             transition: transform 0.3s; z-index: 101;
@@ -167,16 +157,16 @@
 <div class="display-area" id="chat-container">
     <div class="message-group">
         <div class="translated-card">
-            👂 <b>V11 防漏字機制</b><br>
-            按下按鈕後，請等待<b>「叮！」</b>一聲提示音，<br>
-            看到按鈕變色後再開始說話。
+            🧪 <b>V12 核心重置版</b><br>
+            每次點擊按鈕都會強制重建語音核心。<br>
+            這能有效解決 iOS 卡在灰色字體的問題。
         </div>
     </div>
     <div id="interim-result" class="interim-text" style="display:none;"></div>
 </div>
 
 <div class="controls-area">
-    <button class="stop-btn" id="stop-btn" onclick="stopEverything()">⬛ 停止</button>
+    <button class="stop-btn" id="stop-btn" onclick="stopEverything()">⬛ 強制停止</button>
     
     <div class="ctrl-group">
         <select class="lang-select" id="sel-A">
@@ -207,16 +197,14 @@
 
 <script>
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let recognition;
+    let recognition = null; // 不再使用全域實例，改為動態建立
     let activeSide = null; 
     let isRunning = false;
     let isTtsEnabled = true;
     let isPingPongMode = false;
     let ttsQueue = [];
     let isSpeaking = false;
-    
-    // 音效環境
-    let audioCtx = null;
+    let zombieTimer = null; // 用來偵測卡死的計時器
 
     const ui = {
         chat: document.getElementById('chat-container'),
@@ -232,46 +220,53 @@
         pingPongBtn: document.getElementById('pingpong-btn')
     };
 
-    if (SpeechRecognition) {
-        recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = true;
+    // --- 核心：動態建立語音辨識器 ---
+    function createRecognition(lang) {
+        if (!SpeechRecognition) { alert("瀏覽器不支援"); return null; }
+        
+        // 銷毀舊的
+        if (recognition) {
+            try { recognition.abort(); } catch(e){}
+            recognition = null;
+        }
 
-        // 當麥克風「真的」打開了
-        recognition.onstart = () => {
-            // 1. 播放提示音
-            playCueSound();
-            
-            // 2. 更新 UI 為「活躍狀態」
+        const r = new SpeechRecognition();
+        r.continuous = false; // iOS 絕對不能開 true
+        r.interimResults = true;
+        r.lang = lang;
+        r.maxAlternatives = 1;
+
+        r.onstart = () => {
             ui.dot.className = 'status-dot active';
             const langName = activeSide === 'A' ? getLangName(ui.selA.value) : getLangName(ui.selB.value);
             ui.status.innerText = `正在聽${langName}...`;
-            
-            updateBtnActive(activeSide); // 按鈕變色
             scrollToBottom();
+            
+            // 開始監測殭屍字元
+            resetZombieTimer();
         };
 
-        recognition.onend = () => {
+        r.onend = () => {
             ui.dot.className = 'status-dot';
             ui.interim.style.display = 'none';
-            // 邏輯：如果還是 running 狀態，嘗試重連
+            ui.interim.innerText = '';
+            clearZombieTimer();
+
+            // 如果應該在跑，但無故斷掉 (且非手動停止)，嘗試重建
             if (isRunning) {
-                // 如果剛剛是 PingPong 模式且已經完成翻譯，這裡其實不需要立即重啟，
-                // 而是等待 translate 完成後的 toggle。
-                // 但為了保險起見（例如沒講話就斷了），使用 Watchdog 邏輯比較好
-                // 這裡簡化：只重置按鈕樣式，等待下一次觸發
-                ui.btnA.className = activeSide === 'A' ? 'big-btn dimmed' : 'big-btn dimmed'; 
-                ui.btnB.className = activeSide === 'B' ? 'big-btn dimmed' : 'big-btn dimmed';
-                
-                // 嘗試快速重啟 (Watchdog 輕量版)
-                setTimeout(() => { if(isRunning) try{recognition.start()}catch(e){} }, 200);
+                // 延遲一點點再重啟，讓瀏覽器喘口氣
+                setTimeout(() => { 
+                    if(isRunning && activeSide) startSession(activeSide); 
+                }, 200);
             } else {
                 ui.status.innerText = "已停止";
                 resetButtons();
             }
         };
 
-        recognition.onresult = async (event) => {
+        r.onresult = async (event) => {
+            resetZombieTimer(); // 有新字進來，重置卡死計時器
+
             let finalTranscript = '';
             let interimTranscript = '';
 
@@ -290,95 +285,98 @@
                 ui.interim.style.display = 'none';
                 ui.interim.innerText = '';
                 
+                // 停止當前辨識，準備翻譯
+                // (注意：這裡不設 isRunning=false，因為我們要讓他繼續跑流程)
+                try { recognition.stop(); } catch(e){}
+
                 const msgId = addMessage(finalTranscript, activeSide);
                 await translateAndQueue(finalTranscript, activeSide, msgId);
 
-                if (isPingPongMode && isRunning) toggleSide(); 
+                // 輪替邏輯：切換到另一邊
+                if (isPingPongMode && isRunning) {
+                    toggleSide(); 
+                }
             }
         };
         
-        recognition.onerror = (e) => {
-            if (e.error !== 'no-speech') ui.status.innerText = "重連中...";
+        r.onerror = (e) => {
+            console.log("Error:", e.error);
+            // 遇到任何錯誤，直接結束，依賴 onend 重啟
+            clearZombieTimer();
         };
 
-    } else { alert("瀏覽器不支援"); }
-
-    // --- 提示音產生器 (無須外部檔案) ---
-    function initAudio() {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return r;
     }
 
-    function playCueSound() {
-        if (!audioCtx) initAudio();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        
-        // 設定聲音頻率 (清脆的叮聲)
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.1);
-        
-        // 設定音量淡出
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-        
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.1);
+    // --- 殭屍清除機制 ---
+    function resetZombieTimer() {
+        if (zombieTimer) clearTimeout(zombieTimer);
+        // 如果 2.5 秒內沒有新的結果更新，也沒有結束，就當作卡死了
+        zombieTimer = setTimeout(() => {
+            console.log("Zombie Detected! Killing...");
+            if (recognition) try { recognition.stop(); } catch(e){}
+        }, 2500);
+    }
+    
+    function clearZombieTimer() {
+        if (zombieTimer) clearTimeout(zombieTimer);
     }
 
     // --- 控制邏輯 ---
 
     function startSession(side) {
-        initAudio(); // 初始化音效引擎
-        
-        if (isRunning && activeSide === side) return;
-        recognition.stop();
-        
+        // 如果切換同一個語言，視為「重啟」
+        if (activeSide !== side) {
+             // 停止舊的
+             if (recognition) try { recognition.abort(); } catch(e){}
+        }
+
         activeSide = side;
         isRunning = true;
         
-        // 1. 先設為「準備中」狀態 (黃色)
+        // UI 設定
         ui.stopBtn.classList.add('show');
         ui.btnA.className = 'big-btn dimmed';
         ui.btnB.className = 'big-btn dimmed';
         
         const targetBtn = side === 'A' ? ui.btnA : ui.btnB;
-        targetBtn.className = 'big-btn preparing'; // 黃色準備中
-        ui.status.innerText = "啟動麥克風...";
-        ui.dot.className = 'status-dot preparing';
+        if (side === 'A') targetBtn.className = 'big-btn btn-active-A';
+        else targetBtn.className = 'big-btn btn-active-B';
 
-        // 2. 設定語言並啟動
+        // 取得語言
         const val = side === 'A' ? ui.selA.value : ui.selB.value;
-        recognition.lang = val.split('|')[0];
-        
-        // 3. 延遲啟動以確保狀態切換
-        setTimeout(() => { try { recognition.start(); } catch(e) {} }, 100);
-    }
+        const langCode = val.split('|')[0];
 
-    function updateBtnActive(side) {
-        // 真正變成「錄音中」顏色
-        if (side === 'A') ui.btnA.className = 'big-btn btn-active-A';
-        else ui.btnB.className = 'big-btn btn-active-B';
+        // 建立新核心並啟動
+        recognition = createRecognition(langCode);
+        try { recognition.start(); } catch(e) {
+            console.error("Start failed:", e);
+            // 如果啟動失敗，稍後重試
+            setTimeout(() => { if(isRunning) startSession(side); }, 500);
+        }
     }
 
     function toggleSide() {
-        // 輪替模式：先停當前，稍微延遲再開對面，給使用者反應時間
-        recognition.stop();
+        // 切換 activeSide，並在短暫延遲後啟動新的一邊
         activeSide = (activeSide === 'A') ? 'B' : 'A';
-        
-        // 自動啟動下一邊 (會自動觸發 startSession 的流程：變黃 -> 叮 -> 變色)
-        setTimeout(() => startSession(activeSide), 500);
+        setTimeout(() => {
+            if (isRunning) startSession(activeSide);
+        }, 300);
     }
 
     function stopEverything() {
-        isRunning = false; activeSide = null;
-        recognition.stop(); window.speechSynthesis.cancel();
-        ttsQueue = []; resetButtons();
-        ui.status.innerText = "已停止"; ui.dot.className = 'status-dot';
+        isRunning = false; 
+        activeSide = null;
+        if (recognition) {
+            try { recognition.abort(); } catch(e){} // 使用 abort 強制立即停止
+            recognition = null;
+        }
+        window.speechSynthesis.cancel();
+        ttsQueue = []; 
+        resetButtons();
+        clearZombieTimer();
+        ui.status.innerText = "已停止"; 
+        ui.dot.className = 'status-dot';
     }
 
     function resetButtons() {
@@ -386,7 +384,7 @@
         ui.btnA.className = 'big-btn'; ui.btnB.className = 'big-btn';
     }
 
-    // --- 翻譯與TTS (保持不變) ---
+    // --- 翻譯與TTS ---
     async function translateAndQueue(text, side, msgId) {
         const sVal = side === 'A' ? ui.selA.value : ui.selB.value;
         const tVal = side === 'A' ? ui.selB.value : ui.selA.value;
